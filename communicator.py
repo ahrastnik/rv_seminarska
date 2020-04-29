@@ -4,9 +4,12 @@ Communicator module
 Module provides the necessary functionality for communicating with the end system.
 """
 import socket
+import struct
 from threading import Thread
 from queue import Queue, Empty
 from abc import abstractmethod
+
+import numpy as np
 
 
 class Communicator:
@@ -147,10 +150,8 @@ class PhantomCommunicator(Communicator):
         if self._sock is None:
             return
 
-        # Encode data in binary
-        data = data.encode()
         # Send the data to the controller
-        self._sock.send(data)
+        self._sock.sendto(data, (self._ip, self._port))
 
     def _receive(self):
         if self._sock is None:
@@ -158,7 +159,7 @@ class PhantomCommunicator(Communicator):
 
         # Receive the data from the controller
         try:
-            data = self._sock.recv(PhantomCommunicator.RECEIVE_BUFFER_SIZE)
+            data = self._sock.recvfrom(PhantomCommunicator.RECEIVE_BUFFER_SIZE)
         except ConnectionResetError:
             self.disconnect()
             return None
@@ -170,13 +171,18 @@ if __name__ == "__main__":
     # Phantom communicator test
     from time import sleep
 
-    comm = PhantomCommunicator(ip="127.0.0.1", port=6969)
+    comm = PhantomCommunicator(ip="127.0.0.1", port=6969, auto_start=True)
+    print("Client connected!")
+    i = 0
     while True:
-        comm.send("hello world!\n")
-        message = comm.receive()
-        if message is not None:
-            print(message)
-            if message == "off":
-                break
+        X = np.arange(69, 72) + i
+        packet = struct.pack('>%sd' % X.size, *X.flatten('F'))
+        comm.send(packet)
+        # message = comm.receive()
+        # if message is not None:
+        #     print(message)
+        #     if message == "off":
+        #         break
         sleep(1.0)
+        i += 1
     comm.disconnect()
