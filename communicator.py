@@ -147,11 +147,18 @@ class PhantomCommunicator(Communicator):
         self._sock = None
 
     def _send(self, data):
+        """
+        Send a packet to the server
+
+        :param data:    1D Numpy array
+        """
         if self._sock is None:
             return
 
+        # Encode data
+        packet = struct.pack('>%sd' % data.size, *data.flatten('F'))
         # Send the data to the controller
-        self._sock.sendto(data, (self._ip, self._port))
+        self._sock.sendto(packet, (self._ip, self._port))
 
     def _receive(self):
         if self._sock is None:
@@ -176,8 +183,7 @@ if __name__ == "__main__":
     i = 0
     while True:
         X = np.arange(69, 72) + i
-        packet = struct.pack('>%sd' % X.size, *X.flatten('F'))
-        comm.send(packet)
+        comm.send(X)
         # message = comm.receive()
         # if message is not None:
         #     print(message)
