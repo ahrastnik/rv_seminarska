@@ -7,47 +7,87 @@ from tracker import BallTracker
 
 
 WIN_NAME = "RV seminarska"
-CAPTURE_COORDINATES = {"top": 400, "left": 400, "width": 400, "height": 400}
-
 SERVER_IP = "127.0.0.1"
 SERVER_PORT = 6969
 
-PIXEL_RATIO = 0.694
-X_OFFSET = 296
-Y_OFFSET = 278
 
+class App:
+    CAPTURE_COORDINATES = {"top": 400, "left": 400, "width": 400, "height": 400}
+    PIXEL_RATIO = 0.694
+    X_OFFSET = 296
+    Y_OFFSET = 278
 
-def main():
-    comm = PhantomCommunicator(ip=SERVER_IP, port=SERVER_PORT, auto_start=True)
-    tracker = BallTracker(PIXEL_RATIO, X_OFFSET, Y_OFFSET)
+    def __init__(self, name, server_ip, server_port):
+        self._name = name
+        self._server_ip = server_ip
+        self._server_port = server_port
 
-    with mss() as capture:
-        while True:
-            img = capture.grab(monitor=CAPTURE_COORDINATES)
-            img_np = np.asarray(img)
-            image = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
+        self._trajectory = []
+        self._drawing = False
 
-            coordinates = tracker.find(image)
-            if coordinates is not None:
-                # Send ball coordinates to Simulink
-                for c in coordinates[0, :, 3:]:
-                    comm.send(c)
+        cv2.namedWindow(self._name)
+        cv2.setMouseCallback(self._name, self._mouse_callback)
 
-                # Mark detected ball
-                for i in coordinates[0, :, :3]:
-                    # Convert pixel coordinates as floats to integers
-                    i = np.uint16(np.around(i))
-                    x, y, r = i
-                    cv2.circle(img_np, (x, y), r, (0, 255, 0), 2)
+    def _mouse_callback(self, event, x, y, flags, param):
+        if event == cv2.EVENT_MOUSEMOVE and self._drawing:
+            self._trajectory.append((x, y))
+            return
 
-            # Draw image
-            cv2.imshow(WIN_NAME, img_np)
+        elif event == cv2.EVENT_LBUTTONDOWN:
+            self._trajectory.clear()
+            self._drawing = True
+            return
 
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+        elif event == cv2.EVENT_LBUTTONUP:
+            # Connect the last point with the first one
+            if len(self._trajectory) > 0:
+                self._trajectory.append(self._trajectory[0])
 
-        cv2.destroyAllWindows()
+            # TODO: Send trajectory to the controller
+
+            self._drawing = False
+            return
+
+    def run(self):
+        comm = PhantomCommunicator(
+            ip=self._server_ip, port=self._server_port, auto_start=True
+        )
+        tracker = BallTracker(App.PIXEL_RATIO, App.X_OFFSET, App.Y_OFFSET)
+
+        with mss() as capture:
+            while True:
+                img = capture.grab(monitor=App.CAPTURE_COORDINATES)
+                img_np = np.asarray(img)
+                image = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
+
+                coordinates = tracker.find(image)
+                if coordinates is not None:
+                    # Send ball coordinates to Simulink
+                    for c in coordinates[0, :, 3:]:
+                        comm.send(c)
+
+                    # Mark detected ball
+                    for i in coordinates[0, :, :3]:
+                        # Convert pixel coordinates as floats to integers
+                        i = np.uint16(np.around(i))
+                        x, y, r = i
+                        cv2.circle(img_np, (x, y), r, (0, 255, 0), 2)
+
+                # Draw trajectory
+                for i, coord in enumerate(self._trajectory[1:]):
+                    p1 = self._trajectory[i]
+                    p2 = coord
+                    cv2.line(img_np, p1, p2, (0, 0, 255), thickness=1)
+
+                # Draw image
+                cv2.imshow(self._name, img_np)
+
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+
+            cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
-    main()
+    app = App(WIN_NAME, SERVER_IP, SERVER_PORT)
+    app.run()
