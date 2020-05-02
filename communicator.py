@@ -8,6 +8,7 @@ import struct
 from threading import Thread
 from queue import Queue, Empty
 from abc import abstractmethod
+from enum import Enum
 
 import numpy as np
 
@@ -112,7 +113,14 @@ class PhantomCommunicator(Communicator):
     The Phantom Communicator is designed to communicate with the Matlab-Simulink controller via UDP.
     """
 
-    RECEIVE_BUFFER_SIZE = 4096
+    RECEIVE_BUFFER_SIZE = 4096  # [bytes]
+    PACKET_SIZE = 4  # [bytes]
+
+    class PacketTypes(Enum):
+        BALL_POSITION = 0x00
+        TRAJECTORY_START = 0x01
+        TRAJECTORY_END = 0x02
+        TRAJECTORY_SAMPLE = 0x03
 
     def __init__(self, ip=None, port=None, **kwargs):
         self._ip = ip
@@ -148,7 +156,7 @@ class PhantomCommunicator(Communicator):
 
     def _send(self, data):
         """
-        Send a packet to the server
+        Send a data to the controller
 
         :param data:    1D Numpy array
         """
@@ -156,11 +164,16 @@ class PhantomCommunicator(Communicator):
             return
 
         # Encode data
-        packet = struct.pack('>%sd' % data.size, *data.flatten('F'))
+        packet = struct.pack(">%sd" % data.size, *data.flatten("F"))
         # Send the data to the controller
         self._sock.sendto(packet, (self._ip, self._port))
 
     def _receive(self):
+        """
+        Receive a data from the controller
+
+        :return:    1D Numpy array
+        """
         if self._sock is None:
             return None
 
@@ -172,6 +185,44 @@ class PhantomCommunicator(Communicator):
             return None
 
         return data
+
+    def send_packet(self, packet_type, data=None):
+        """
+        Sends a single 4 byte packet to the Phantom controller
+
+        :param packet_type: Type of the packet (PacketTypes)
+        :param data:        1D Numpy array of size 3
+                            Data to send in the packet, if the data is None zeros will be sent,
+                            after the packet type
+        """
+        packet = np.zeros(PhantomCommunicator.PACKET_SIZE, dtype=np.double)
+        # Assign packet type
+        packet[0] = packet_type.value
+        # Assign data, if any was provided
+        if data is not None:
+            packet[1:] = data
+        # Send the packet to the controller
+        self.send(packet)
+
+    def send_ball_position(self, position):
+        self.send_packet(PhantomCommunicator.PacketTypes.BALL_POSITION, position)
+
+    def send_trajectory(self, trajectory):
+        self._send_trajectory_start()
+
+        for sample in trajectory:
+            self._send_trajectory_sample(sample)
+
+        self._send_trajectory_end()
+
+    def _send_trajectory_start(self):
+        self.send_packet(PhantomCommunicator.PacketTypes.TRAJECTORY_START)
+
+    def _send_trajectory_end(self):
+        self.send_packet(PhantomCommunicator.PacketTypes.TRAJECTORY_END)
+
+    def _send_trajectory_sample(self, sample):
+        self.send_packet(PhantomCommunicator.PacketTypes.TRAJECTORY_SAMPLE, sample)
 
 
 if __name__ == "__main__":

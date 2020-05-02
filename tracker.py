@@ -28,19 +28,20 @@ class ObjectTracker:
         """
         pass
 
-    def _pixels_to_mm(self, coordinates):
+    def _pixels_to_mm(self, pixel_coordinates):
         """
         Converts coordinates in pixels, to coordinates in millimeters
 
-        :param coordinates:     Coordinates in pixels as Numpy array
+        :param pixel_coordinates:     Coordinates in pixels as Numpy array
 
         :return:                Coordinates in millimeters as Numpy array
         """
-        pixel_coordinates = coordinates * self._pixel_ratio
-        pixel_coordinates[:, :, 0] -= self._x_offset
-        pixel_coordinates[:, :, 1] -= self._y_offset
+        mm_coordinates = pixel_coordinates * self._pixel_ratio
+        mm_coordinates[:, :, 0] -= self._x_offset
+        mm_coordinates[:, :, 1] -= self._y_offset
+        mm_coordinates[:, :, 2] = 0
 
-        return pixel_coordinates
+        return mm_coordinates
 
 
 class BallTracker(ObjectTracker):

@@ -28,9 +28,12 @@ class App:
         cv2.namedWindow(self._name)
         cv2.setMouseCallback(self._name, self._mouse_callback)
 
+        self.comm = PhantomCommunicator(ip=server_ip, port=server_port, auto_start=True)
+        self.tracker = BallTracker(App.PIXEL_RATIO, App.X_OFFSET, App.Y_OFFSET)
+
     def _mouse_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_MOUSEMOVE and self._drawing:
-            self._trajectory.append((x, y))
+            self._trajectory.append((x, y, 0))
             return
 
         elif event == cv2.EVENT_LBUTTONDOWN:
@@ -43,40 +46,36 @@ class App:
             if len(self._trajectory) > 0:
                 self._trajectory.append(self._trajectory[0])
 
-            # TODO: Send trajectory to the controller
+            # Send the trajectory
+            self.comm.send_trajectory(self._trajectory)
 
             self._drawing = False
             return
 
     def run(self):
-        comm = PhantomCommunicator(
-            ip=self._server_ip, port=self._server_port, auto_start=True
-        )
-        tracker = BallTracker(App.PIXEL_RATIO, App.X_OFFSET, App.Y_OFFSET)
-
         with mss() as capture:
             while True:
                 img = capture.grab(monitor=App.CAPTURE_COORDINATES)
                 img_np = np.asarray(img)
                 image = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
 
-                coordinates = tracker.find(image)
+                coordinates = self.tracker.find(image)
                 if coordinates is not None:
                     # Send ball coordinates to Simulink
                     for c in coordinates[0, :, 3:]:
-                        comm.send(c)
+                        self.comm.send_ball_position(c)
 
                     # Mark detected ball
                     for i in coordinates[0, :, :3]:
                         # Convert pixel coordinates as floats to integers
                         i = np.uint16(np.around(i))
                         x, y, r = i
-                        cv2.circle(img_np, (x, y), r, (0, 255, 0), 2)
+                        cv2.circle(img_np, (x, y), r, (0, 255, 0), thickness=1)
 
                 # Draw trajectory
                 for i, coord in enumerate(self._trajectory[1:]):
-                    p1 = self._trajectory[i]
-                    p2 = coord
+                    p1 = self._trajectory[i][:2]
+                    p2 = coord[:2]
                     cv2.line(img_np, p1, p2, (0, 0, 255), thickness=1)
 
                 # Draw image
