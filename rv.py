@@ -42,14 +42,11 @@ class App:
         self._selecting_capture = False
         self._capture_area = np.zeros([2, 2], dtype=np.int16)
         self._capture_coord = {"top": 400, "left": 400, "width": 400, "height": 400}
+        self._screen_capture = None
 
         # State - tracking
         self._trajectory = []
         self._drawing = False
-
-        # OpenCV window initialization
-        cv2.namedWindow(self._name)
-        cv2.setMouseCallback(self._name, self._mouse_callback)
 
         self.comm = PhantomCommunicator(ip=server_ip, port=server_port, auto_start=True)
         self.tracker = BallTracker(App.PIXEL_RATIO, App.X_OFFSET, App.Y_OFFSET)
@@ -85,6 +82,9 @@ class App:
             )
             # Stop capturing area
             self._selecting_capture = False
+            # Clear screen shot
+            self._screen_capture = None
+            # Set mode to tracking
             self._mode = App.States.STATE_TRACKING
             return
 
@@ -130,8 +130,15 @@ class App:
             cv2.destroyAllWindows()
 
     def _mode_capture_area(self, capture):
-        screen = np.asarray(capture.grab(capture.monitors[1]))
-        # screen = screenshot.copy()
+        if self._screen_capture is None:
+            # Grab the screen shot, when first time entering the state
+            self._screen_capture = np.asarray(capture.grab(capture.monitors[1]))
+            # OpenCV window initialization
+            cv2.namedWindow(self._name)
+            cv2.setMouseCallback(self._name, self._mouse_callback)
+
+        # Copy the screen shot, to prevent over-drawing
+        screen = self._screen_capture.copy()
         # Draw the area selection rectangle
         if self._selecting_capture:
             p1, p2 = tuple(self._capture_area[0, :]), tuple(self._capture_area[1, :])
