@@ -1,3 +1,5 @@
+from enum import Enum
+
 import numpy as np
 import cv2
 from mss import mss
@@ -16,12 +18,17 @@ class App:
     X_OFFSET = 296
     Y_OFFSET = 278
 
+    class States(Enum):
+        STATE_QUIT = -1
+        STATE_CAPTURE_AREA = 0
+        STATE_TRACKING = 1
+
     def __init__(self, name, server_ip, server_port):
         self._name = name
         self._server_ip = server_ip
         self._server_port = server_port
 
-        self._initializing = True
+        self._mode = App.States.STATE_CAPTURE_AREA
         self._selecting_capture = False
         self._capture_area = np.zeros([2, 2], dtype=np.int16)
         self._capture_coord = {"top": 400, "left": 400, "width": 400, "height": 400}
@@ -65,11 +72,11 @@ class App:
             )
             # Stop capturing area
             self._selecting_capture = False
-            self._initializing = False
+            self._mode = App.States.STATE_TRACKING
             return
 
     def _mouse_callback(self, event, x, y, flags, param):
-        if self._initializing:
+        if self._mode == App.States.STATE_CAPTURE_AREA:
             self._mouse_callback_init(event, x, y, flags, param)
             return
 
@@ -98,54 +105,18 @@ class App:
             # screenshot = np.asarray(capture.grab(capture.monitors[1]))
 
             while True:
-                # Select capture area
-                if self._initializing:
-                    if not self._select_capture_area(capture):
-                        break
-                    continue
+                if self._mode == App.States.STATE_CAPTURE_AREA:
+                    self._mode_capture_area(capture)
 
-                # Capture the selected area
-                screen = np.asarray(capture.grab(self._capture_coord))
-                image = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+                elif self._mode == App.States.STATE_TRACKING:
+                    self._mode_tracking(capture)
 
-                # Locate the ball
-                coordinates = self.tracker.find(image)
-                if coordinates is not None:
-                    # Send ball coordinates to Simulink
-                    for c in coordinates[0, :, 3:]:
-                        self.comm.send_ball_position(c)
-
-                    # Mark detected ball
-                    for i in coordinates[0, :, :3]:
-                        # Convert pixel coordinates as floats to integers
-                        i = np.uint16(np.around(i))
-                        x, y, r = i
-                        cv2.circle(screen, (x, y), r, (0, 255, 0), thickness=1)
-
-                # Draw trajectory
-                for i, coord in enumerate(self._trajectory[1:]):
-                    p1 = self._trajectory[i][:2]
-                    p2 = coord[:2]
-                    cv2.line(screen, p1, p2, (0, 0, 255), thickness=1)
-
-                # Draw image
-                cv2.imshow(self._name, screen)
-
-                # OpenCV mainloop
-                key = cv2.waitKey(1) & 0xFF
-
-                if key == ord("r"):
-                    # Reselect capture area
-                    self._initializing = True
-                    continue
-
-                elif key == ord("q"):
-                    # Quit
+                elif self._mode == App.States.STATE_QUIT:
                     break
 
             cv2.destroyAllWindows()
 
-    def _select_capture_area(self, capture):
+    def _mode_capture_area(self, capture):
         screen = np.asarray(capture.grab(capture.monitors[1]))
         # screen = screenshot.copy()
         # Draw the area selection rectangle
@@ -157,9 +128,47 @@ class App:
         cv2.imshow(self._name, screen)
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
-            return False
+            self._mode = App.States.STATE_QUIT
 
-        return True
+    def _mode_tracking(self, capture):
+        # Capture the selected area
+        screen = np.asarray(capture.grab(self._capture_coord))
+        image = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+
+        # Locate the ball
+        coordinates = self.tracker.find(image)
+        if coordinates is not None:
+            # Send ball coordinates to Simulink
+            for c in coordinates[0, :, 3:]:
+                self.comm.send_ball_position(c)
+
+            # Mark detected ball
+            for i in coordinates[0, :, :3]:
+                # Convert pixel coordinates as floats to integers
+                i = np.uint16(np.around(i))
+                x, y, r = i
+                cv2.circle(screen, (x, y), r, (0, 255, 0), thickness=1)
+
+        # Draw trajectory
+        for i, coord in enumerate(self._trajectory[1:]):
+            p1 = self._trajectory[i][:2]
+            p2 = coord[:2]
+            cv2.line(screen, p1, p2, (0, 0, 255), thickness=1)
+
+        # Draw image
+        cv2.imshow(self._name, screen)
+
+        # OpenCV mainloop
+        key = cv2.waitKey(1) & 0xFF
+
+        # Reselect capture area
+        if key == ord("r"):
+            self._mode = App.States.STATE_CAPTURE_AREA
+            return
+
+        # Quit
+        elif key == ord("q"):
+            self._mode = App.States.STATE_QUIT
 
 
 if __name__ == "__main__":
