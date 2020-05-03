@@ -18,6 +18,14 @@ class App:
     X_OFFSET = 296
     Y_OFFSET = 278
 
+    # Key list
+    KEY_QUIT = "q"
+    KEY_CAPTURE_AREA = "r"
+
+    # Colors
+    COLOR_DRAW = (0, 0, 255)
+    COLOR_MARK = (0, 255, 0)
+
     class States(Enum):
         STATE_QUIT = -1
         STATE_CAPTURE_AREA = 0
@@ -29,12 +37,17 @@ class App:
         self._server_port = server_port
 
         self._mode = App.States.STATE_CAPTURE_AREA
+
+        # State - capture area
         self._selecting_capture = False
         self._capture_area = np.zeros([2, 2], dtype=np.int16)
         self._capture_coord = {"top": 400, "left": 400, "width": 400, "height": 400}
+
+        # State - tracking
         self._trajectory = []
         self._drawing = False
 
+        # OpenCV window initialization
         cv2.namedWindow(self._name)
         cv2.setMouseCallback(self._name, self._mouse_callback)
 
@@ -122,12 +135,12 @@ class App:
         # Draw the area selection rectangle
         if self._selecting_capture:
             p1, p2 = tuple(self._capture_area[0, :]), tuple(self._capture_area[1, :])
-            cv2.rectangle(screen, p1, p2, (0, 0, 255), thickness=1)
+            cv2.rectangle(screen, p1, p2, App.COLOR_DRAW, thickness=1)
 
         # Draw image
         cv2.imshow(self._name, screen)
 
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+        if cv2.waitKey(1) & 0xFF == ord(App.KEY_QUIT):
             self._mode = App.States.STATE_QUIT
 
     def _mode_tracking(self, capture):
@@ -138,7 +151,7 @@ class App:
         # Locate the ball
         coordinates = self.tracker.find(image)
         if coordinates is not None:
-            # Send ball coordinates to Simulink
+            # Send ball coordinates to the robot controller
             for c in coordinates[0, :, 3:]:
                 self.comm.send_ball_position(c)
 
@@ -147,13 +160,13 @@ class App:
                 # Convert pixel coordinates as floats to integers
                 i = np.uint16(np.around(i))
                 x, y, r = i
-                cv2.circle(screen, (x, y), r, (0, 255, 0), thickness=1)
+                cv2.circle(screen, (x, y), r, App.COLOR_MARK, thickness=1)
 
         # Draw trajectory
         for i, coord in enumerate(self._trajectory[1:]):
             p1 = self._trajectory[i][:2]
             p2 = coord[:2]
-            cv2.line(screen, p1, p2, (0, 0, 255), thickness=1)
+            cv2.line(screen, p1, p2, App.COLOR_DRAW, thickness=1)
 
         # Draw image
         cv2.imshow(self._name, screen)
@@ -162,12 +175,12 @@ class App:
         key = cv2.waitKey(1) & 0xFF
 
         # Reselect capture area
-        if key == ord("r"):
+        if key == ord(App.KEY_CAPTURE_AREA):
             self._mode = App.States.STATE_CAPTURE_AREA
             return
 
         # Quit
-        elif key == ord("q"):
+        elif key == ord(App.KEY_QUIT):
             self._mode = App.States.STATE_QUIT
 
 
