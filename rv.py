@@ -18,6 +18,10 @@ class App:
     X_OFFSET = 296
     Y_OFFSET = 278
 
+    # Capture size limit
+    CAPTURE_SIZE_LIMIT_X = 200
+    CAPTURE_SIZE_LIMIT_Y = 100
+
     # Key list
     KEY_QUIT = "q"
     KEY_CAPTURE_AREA = "r"
@@ -59,6 +63,7 @@ class App:
 
         if event == cv2.EVENT_LBUTTONDOWN:
             self._capture_area[0, :] = (x, y)
+            self._capture_area[1, :] = (x, y)
             self._selecting_capture = True
             return
 
@@ -82,6 +87,12 @@ class App:
             )
             # Stop capturing area
             self._selecting_capture = False
+            # Validate width and height
+            if (
+                self._capture_coord["width"] < App.CAPTURE_SIZE_LIMIT_X
+                or self._capture_coord["height"] < App.CAPTURE_SIZE_LIMIT_Y
+            ):
+                return
             # Clear screen shot
             self._screen_capture = None
             # Set mode to tracking
