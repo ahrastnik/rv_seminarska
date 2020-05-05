@@ -21,35 +21,35 @@ class Communicator:
     communication handlers, which connect to end systems, based on defined protocols.
     """
 
-    COMMUNICATION_TIMEOUT = 2.0  # [s]
+    COMMUNICATION_TIMEOUT = 1.0  # [s]
 
-    def __init__(self, auto_start=True):
+    def __init__(self):
         self._running = False
         self._queue_receive = Queue()
         self._queue_send = Queue()
+        self._thread_receiver = Thread(name="receiver", target=self._receiver)
+        self._thread_sender = Thread(name="sender", target=self._sender)
 
-        if auto_start:
-            self.start()
-
-    def start(self):
-        """ Starts the communicator """
+    def connect(self):
+        """ Connect to the end system """
         if self._running:
             return
 
         self._running = True
-        # Start the receiver
-        thread_receiver = Thread(name="receiver", target=self._receiver)
-        thread_receiver.start()
-        # Start the sender
-        thread_sender = Thread(name="sender", target=self._sender)
-        thread_sender.start()
+        # Start threads
+        self._thread_receiver.start()
+        self._thread_sender.start()
 
-    def stop(self):
-        """ Stops the communicator """
+    def disconnect(self):
+        """ Disconnect from the end system """
         if not self._running:
             return
 
         self._running = False
+
+        # Wait until threads finish
+        self._thread_receiver.join(timeout=None)
+        self._thread_sender.join(timeout=None)
 
     def _receiver(self):
         while self._running:
@@ -82,24 +82,14 @@ class Communicator:
         """ Receives data from the end systems """
         pass
 
-    @abstractmethod
-    def connect(self):
-        """ Connect to the end system """
-        pass
-
-    @abstractmethod
-    def disconnect(self):
-        """ Disconnect from the end system """
-        pass
-
     def send(self, data):
         """ Send data to the end system """
         self._queue_send.put(data)
 
-    def receive(self):
+    def receive(self, **kwargs):
         """ Receive data from the end system """
         try:
-            data = self._queue_receive.get_nowait()
+            data = self._queue_receive.get(**kwargs)
             self._queue_receive.task_done()
             return data
         except Empty:
@@ -117,42 +107,66 @@ class PhantomCommunicator(Communicator):
     PACKET_SIZE = 4  # [bytes]
 
     class PacketTypes(Enum):
-        BALL_POSITION = 0x00
-        TRAJECTORY_START = 0x01
-        TRAJECTORY_END = 0x02
-        TRAJECTORY_SAMPLE = 0x03
+        START = 0xE0
+        STOP = 0xE1
+        BALL_POSITION = 0xF0
+        TRAJECTORY_START = 0xF1
+        TRAJECTORY_END = 0xF2
+        TRAJECTORY_SAMPLE = 0xF3
 
-    def __init__(self, ip=None, port=None, **kwargs):
+    def __init__(self, ip=None, port_send=None, port_receive=None):
         self._ip = ip
-        self._port = port
+        self._port_send = port_send
+        self._port_receive = port_receive
 
-        self._sock = None
+        self._sock_send = None
+        self._sock_receive = None
+
+        super().__init__()
+
         # Connect immediately if all connection details were input
-        if ip is not None and port is not None:
+        if ip is not None and port_send is not None and port_receive is not None:
             self.connect()
 
-        super().__init__(**kwargs)
-
-    def connect(self, ip=None, port=None):
+    def connect(self, ip=None, port_send=None, port_receive=None):
         # Update connection settings
         if ip is not None:
             self._ip = ip
-        if port is not None:
-            self._port = port
+        if port_send is not None:
+            self._port_send = port_send
+        if port_receive is not None:
+            self._port_receive = port_receive
 
-        if self._sock is not None:
+        if self._sock_send is not None or self._sock_receive is not None:
             return
 
-        # Create the socket and connect to the server
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._sock.connect((self._ip, self._port))
+        # Create sender socket and connect to the server
+        self._sock_send = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._sock_send.connect((self._ip, self._port_send))
+        # Create receiver socket and bind address
+        self._sock_receive = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._sock_receive.bind((self._ip, self._port_receive))
+
+        # Start the sender and receiver threads
+        super().connect()
+
+        # Notify controller about the established connection
+        self._send_start()
 
     def disconnect(self):
-        if self._sock is None:
-            return
+        # Notify controller about the dropped connection
+        self._send_stop()
 
-        self._sock.close()
-        self._sock = None
+        super().disconnect()
+
+        # Close sockets
+        if self._sock_send is not None:
+            self._sock_send.close()
+            self._sock_send = None
+
+        if self._sock_receive is not None:
+            self._sock_receive.close()
+            self._sock_receive = None
 
     def _send(self, data):
         """
@@ -160,13 +174,13 @@ class PhantomCommunicator(Communicator):
 
         :param data:    1D Numpy array
         """
-        if self._sock is None:
+        if self._sock_send is None:
             return
 
         # Encode data
         packet = struct.pack(">%sd" % data.size, *data.flatten("F"))
         # Send the data to the controller
-        self._sock.sendto(packet, (self._ip, self._port))
+        self._sock_send.sendto(packet, (self._ip, self._port_send))
 
     def _receive(self):
         """
@@ -174,17 +188,19 @@ class PhantomCommunicator(Communicator):
 
         :return:    1D Numpy array
         """
-        if self._sock is None:
+        if self._sock_receive is None:
             return None
 
         # Receive the data from the controller
         try:
-            data = self._sock.recvfrom(PhantomCommunicator.RECEIVE_BUFFER_SIZE)
+            packet = self._sock_receive.recv(PhantomCommunicator.RECEIVE_BUFFER_SIZE)
+            return struct.unpack(">%sd" % PhantomCommunicator.PACKET_SIZE, packet)
+        except struct.error:
+            print("Invalid data format received!")
         except ConnectionResetError:
             self.disconnect()
-            return None
 
-        return data
+        return None
 
     def send_packet(self, packet_type, data=None):
         """
@@ -203,6 +219,12 @@ class PhantomCommunicator(Communicator):
             packet[1:] = data
         # Send the packet to the controller
         self.send(packet)
+
+    def _send_start(self):
+        self.send_packet(PhantomCommunicator.PacketTypes.START)
+
+    def _send_stop(self):
+        self.send_packet(PhantomCommunicator.PacketTypes.STOP)
 
     def send_ball_position(self, position):
         self.send_packet(PhantomCommunicator.PacketTypes.BALL_POSITION, position)
@@ -229,17 +251,17 @@ if __name__ == "__main__":
     # Phantom communicator test
     from time import sleep
 
-    comm = PhantomCommunicator(ip="127.0.0.1", port=6969, auto_start=True)
-    print("Client connected!")
+    comm = PhantomCommunicator(ip="127.0.0.1", port_send=6969, port_receive=9696)
     i = 0
     while True:
-        X = np.arange(69, 72) + i
-        comm.send(X)
-        # message = comm.receive()
-        # if message is not None:
-        #     print(message)
-        #     if message == "off":
-        #         break
+        x = np.arange(69, 73) + i
+        comm.send(x)
+        while True:
+            message = comm.receive()
+            if message is None:
+                break
+            print(message)
+
         sleep(1.0)
         i += 1
     comm.disconnect()

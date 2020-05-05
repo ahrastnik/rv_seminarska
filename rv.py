@@ -10,7 +10,8 @@ from tracker import BallTracker
 
 WIN_NAME = "RV seminarska"
 SERVER_IP = "127.0.0.1"
-SERVER_PORT = 6969
+PORT_SEND = 6969
+PORT_RECEIVE = 9696
 
 
 class App:
@@ -31,16 +32,18 @@ class App:
     COLOR_MARK = (0, 255, 0)
 
     class States(Enum):
-        STATE_QUIT = -1
+        STATE_QUIT = -2
+        STATE_HANDSHAKE = -1
         STATE_CAPTURE_AREA = 0
         STATE_TRACKING = 1
 
-    def __init__(self, name, server_ip, server_port):
+    def __init__(self, name, server_ip, port_send, port_receive):
         self._name = name
         self._server_ip = server_ip
-        self._server_port = server_port
+        self._port_send = port_send
+        self._port_receive = port_receive
 
-        self._mode = App.States.STATE_CAPTURE_AREA
+        self._mode = App.States.STATE_HANDSHAKE
 
         # State - capture area
         self._selecting_capture = False
@@ -52,7 +55,9 @@ class App:
         self._trajectory = []
         self._drawing = False
 
-        self.comm = PhantomCommunicator(ip=server_ip, port=server_port, auto_start=True)
+        self.comm = PhantomCommunicator(
+            ip=server_ip, port_send=port_send, port_receive=port_receive
+        )
         self.tracker = BallTracker(App.PIXEL_RATIO, App.X_OFFSET, App.Y_OFFSET)
 
     def _mouse_callback_init(self, event, x, y, flags, param):
@@ -126,19 +131,42 @@ class App:
 
     def run(self):
         with mss() as capture:
-            # screenshot = np.asarray(capture.grab(capture.monitors[1]))
-
             while True:
-                if self._mode == App.States.STATE_CAPTURE_AREA:
+                if self._mode == App.States.STATE_HANDSHAKE:
+                    self._state_handshake()
+                    continue
+
+                elif self._mode == App.States.STATE_CAPTURE_AREA:
                     self._mode_capture_area(capture)
+                    continue
 
                 elif self._mode == App.States.STATE_TRACKING:
                     self._mode_tracking(capture)
+                    continue
 
                 elif self._mode == App.States.STATE_QUIT:
                     break
 
+            self.comm.disconnect()
             cv2.destroyAllWindows()
+
+    def _state_handshake(self):
+        """
+        Establish a handshake with the controller
+
+        The state waits for a handshake. If the handshake packet isn't received
+        or it's content isn't valid, the application will quit.
+        """
+        handshake = self.comm.receive(
+            block=True, timeout=PhantomCommunicator.COMMUNICATION_TIMEOUT
+        )
+        if (
+            handshake is None
+            or handshake[0] != PhantomCommunicator.PacketTypes.START.value
+        ):
+            self._mode = App.States.STATE_QUIT
+        else:
+            self._mode = App.States.STATE_CAPTURE_AREA
 
     def _mode_capture_area(self, capture):
         if self._screen_capture is None:
@@ -203,5 +231,5 @@ class App:
 
 
 if __name__ == "__main__":
-    app = App(WIN_NAME, SERVER_IP, SERVER_PORT)
+    app = App(WIN_NAME, SERVER_IP, PORT_SEND, PORT_RECEIVE)
     app.run()
