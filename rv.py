@@ -43,7 +43,7 @@ class App:
         self._port_send = port_send
         self._port_receive = port_receive
 
-        self._mode = App.States.STATE_HANDSHAKE
+        self._state = App.States.STATE_HANDSHAKE
 
         # State - capture area
         self._selecting_capture = False
@@ -60,10 +60,10 @@ class App:
         )
         self.tracker = BallTracker(App.PIXEL_RATIO, App.X_OFFSET, App.Y_OFFSET)
 
-    def _mouse_callback_init(self, event, x, y, flags, param):
+    def _mouse_callback_select(self, event, x, y, flags, param):
+        """ Handles capture area selection """
         if event == cv2.EVENT_MOUSEMOVE and self._selecting_capture:
             self._capture_area[1, :] = (x, y)
-            # print(self._capture_area)
             return
 
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -101,12 +101,13 @@ class App:
             # Clear screen shot
             self._screen_capture = None
             # Set mode to tracking
-            self._mode = App.States.STATE_TRACKING
+            self._state = App.States.STATE_TRACKING
             return
 
     def _mouse_callback(self, event, x, y, flags, param):
-        if self._mode == App.States.STATE_CAPTURE_AREA:
-            self._mouse_callback_init(event, x, y, flags, param)
+        """ Handles trajectory drawing """
+        if self._state == App.States.STATE_CAPTURE_AREA:
+            self._mouse_callback_select(event, x, y, flags, param)
             return
 
         if event == cv2.EVENT_MOUSEMOVE and self._drawing:
@@ -130,21 +131,22 @@ class App:
             return
 
     def run(self):
+        """ Run the app state machine """
         with mss() as capture:
             while True:
-                if self._mode == App.States.STATE_HANDSHAKE:
+                if self._state == App.States.STATE_HANDSHAKE:
                     self._state_handshake()
                     continue
 
-                elif self._mode == App.States.STATE_CAPTURE_AREA:
-                    self._mode_capture_area(capture)
+                elif self._state == App.States.STATE_CAPTURE_AREA:
+                    self._state_capture_area(capture)
                     continue
 
-                elif self._mode == App.States.STATE_TRACKING:
-                    self._mode_tracking(capture)
+                elif self._state == App.States.STATE_TRACKING:
+                    self._state_tracking(capture)
                     continue
 
-                elif self._mode == App.States.STATE_QUIT:
+                elif self._state == App.States.STATE_QUIT:
                     break
 
             self.comm.disconnect()
@@ -164,11 +166,16 @@ class App:
             handshake is None
             or handshake[0] != PhantomCommunicator.PacketTypes.START.value
         ):
-            self._mode = App.States.STATE_QUIT
+            self._state = App.States.STATE_QUIT
         else:
-            self._mode = App.States.STATE_CAPTURE_AREA
+            self._state = App.States.STATE_CAPTURE_AREA
 
-    def _mode_capture_area(self, capture):
+    def _state_capture_area(self, capture):
+        """
+        Select the capture are for tracking
+
+        :param capture:     Reference to the screen capture instance
+        """
         if self._screen_capture is None:
             # Grab the screen shot, when first time entering the state
             self._screen_capture = np.asarray(capture.grab(capture.monitors[1]))
@@ -187,9 +194,14 @@ class App:
         cv2.imshow(self._name, screen)
 
         if cv2.waitKey(1) & 0xFF == ord(App.KEY_QUIT):
-            self._mode = App.States.STATE_QUIT
+            self._state = App.States.STATE_QUIT
 
-    def _mode_tracking(self, capture):
+    def _state_tracking(self, capture):
+        """
+        Track the ball and send the coordinates
+
+        :param capture:     Reference to the screen capture instance
+        """
         # Capture the selected area
         screen = np.asarray(capture.grab(self._capture_coord))
         image = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
@@ -222,12 +234,12 @@ class App:
 
         # Reselect capture area
         if key == ord(App.KEY_CAPTURE_AREA):
-            self._mode = App.States.STATE_CAPTURE_AREA
+            self._state = App.States.STATE_CAPTURE_AREA
             return
 
         # Quit
         elif key == ord(App.KEY_QUIT):
-            self._mode = App.States.STATE_QUIT
+            self._state = App.States.STATE_QUIT
 
 
 if __name__ == "__main__":

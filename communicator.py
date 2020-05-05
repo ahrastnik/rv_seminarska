@@ -74,7 +74,11 @@ class Communicator:
 
     @abstractmethod
     def _send(self, data):
-        """ Sends data to the end systems """
+        """
+        Sends data to the end systems
+
+        :param data:    Data to send to the end-system
+        """
         pass
 
     @abstractmethod
@@ -83,11 +87,20 @@ class Communicator:
         pass
 
     def send(self, data):
-        """ Send data to the end system """
+        """
+        Queue data for sending to the end system
+
+        :param data:    Data to send to the end-system
+        """
         self._queue_send.put(data)
 
     def receive(self, **kwargs):
-        """ Receive data from the end system """
+        """
+        Get queued data, that was received from the end-system
+
+        :param kwargs:
+        :return:        Queued data packet or None, if one wasn't found
+        """
         try:
             data = self._queue_receive.get(**kwargs)
             self._queue_receive.task_done()
@@ -221,15 +234,27 @@ class PhantomCommunicator(Communicator):
         self.send(packet)
 
     def _send_start(self):
+        """ Notify the controller about the connection """
         self.send_packet(PhantomCommunicator.PacketTypes.START)
 
     def _send_stop(self):
+        """ Notify the controller about the disconnect """
         self.send_packet(PhantomCommunicator.PacketTypes.STOP)
 
     def send_ball_position(self, position):
+        """
+        Send the ball position coordinates to the controller
+
+        :param position:    Ball coordinates as a 1D Numpy vector of size 3
+        """
         self.send_packet(PhantomCommunicator.PacketTypes.BALL_POSITION, position)
 
     def send_trajectory(self, trajectory):
+        """
+        Send the new trajectory to the controller
+
+        :param trajectory:  List of coordinates as tuples of length 3
+        """
         self._send_trajectory_start()
 
         for sample in trajectory:
@@ -238,12 +263,19 @@ class PhantomCommunicator(Communicator):
         self._send_trajectory_end()
 
     def _send_trajectory_start(self):
+        """ Notify the trajectory transmission start """
         self.send_packet(PhantomCommunicator.PacketTypes.TRAJECTORY_START)
 
     def _send_trajectory_end(self):
+        """ Notify the trajectory transmission stop """
         self.send_packet(PhantomCommunicator.PacketTypes.TRAJECTORY_END)
 
     def _send_trajectory_sample(self, sample):
+        """
+        Send the trajectory sample
+
+        :param sample:  Sample as tuple of length 3
+        """
         self.send_packet(PhantomCommunicator.PacketTypes.TRAJECTORY_SAMPLE, sample)
 
 
