@@ -142,6 +142,11 @@ class App:
             self._drawing = False
             return
 
+        elif event == cv2.EVENT_RBUTTONUP and not self._drawing:
+            self._trajectory.clear()
+            self._trajectory_state = App.TrajectoryStates.STATE_DRAWING
+            return
+
     def run(self):
         """ Run the app state machine """
         with mss() as capture:
@@ -255,6 +260,7 @@ class App:
             self._state = App.States.STATE_QUIT
 
     def _state_quit(self):
+        """ Cleanup and close the program """
         # Notify controller about the dropped connection
         self.comm.send_stop()
         self.comm.disconnect()
