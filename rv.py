@@ -32,6 +32,7 @@ class App:
     COLOR_PASS = (150, 240, 150)
     COLOR_FAIL = (70, 70, 255)
     COLOR_MARK = (0, 255, 0)
+    COLOR_TEXT = (255, 255, 255)
 
     class States(Enum):
         STATE_QUIT = -2
@@ -67,6 +68,18 @@ class App:
             ip=server_ip, port_send=port_send, port_receive=port_receive
         )
         self.tracker = BallTracker(App.PIXEL_RATIO, App.X_OFFSET, App.Y_OFFSET)
+
+    @staticmethod
+    def _draw_instruction(image, text, position=(50, 50), size=0.75, color=COLOR_TEXT):
+        """
+        Draws an instruction on the screen
+
+        :param image:   Image on which to draw the text
+        :param text:    Text to draw
+        """
+        cv2.putText(
+            image, text, position, cv2.FONT_HERSHEY_SIMPLEX, size, color,
+        )
 
     def _mouse_callback_select(self, event, x, y, flags, param):
         """ Handles capture area selection """
@@ -174,11 +187,27 @@ class App:
         The state waits for a handshake. If the handshake packet isn't received
         or it's content isn't valid, the application will quit.
         """
-        # Notify controller about the established connection
+        screen = np.zeros([500, 500])
+        # Draw instruction
+        App._draw_instruction(screen, "Connecting to the controller...")
+        # Draw image
+        cv2.namedWindow(self._name)
+        cv2.imshow(self._name, screen)
+        cv2.waitKey(1)
+
+        # Attempt to notify the controller about the established connection
         if self.comm.send_start():
             self._state = App.States.STATE_CAPTURE_AREA
+
+            cv2.destroyWindow(self._name)
+            cv2.waitKey(500)
         else:
             self._state = App.States.STATE_QUIT
+
+            screen = np.zeros([500, 500])
+            App._draw_instruction(screen, "Failed to connect...")
+            cv2.imshow(self._name, screen)
+            cv2.waitKey(1)
 
     def _state_capture_area(self, capture):
         """
@@ -200,6 +229,8 @@ class App:
             p1, p2 = tuple(self._capture_area[0, :]), tuple(self._capture_area[1, :])
             cv2.rectangle(screen, p1, p2, App.COLOR_DRAW, thickness=1)
 
+        # Draw instruction
+        App._draw_instruction(screen, "Select the capture area")
         # Draw image
         cv2.imshow(self._name, screen)
 
@@ -243,6 +274,20 @@ class App:
                 color = App.COLOR_DRAW
             # Draw trajectory
             cv2.line(screen, p1, p2, color, thickness=1)
+
+        # Draw instruction
+        App._draw_instruction(
+            screen, "Press the left button to start drawing the trajectory"
+        )
+        App._draw_instruction(
+            screen, "Press the right button to clear the trajectory", position=(50, 75)
+        )
+        App._draw_instruction(
+            screen, "Press R key to reselect the capture area", position=(50, 100)
+        )
+        App._draw_instruction(
+            screen, "Press Q key to quit the program", position=(50, 125)
+        )
 
         # Draw image
         cv2.imshow(self._name, screen)
