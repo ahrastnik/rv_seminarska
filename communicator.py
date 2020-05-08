@@ -22,6 +22,7 @@ class Communicator:
     """
 
     COMMUNICATION_TIMEOUT = 1.0  # [s]
+    COMMUNICATION_RETRIES = 3  # Number of transmission retries
 
     def __init__(self):
         self._running = False
@@ -257,31 +258,43 @@ class PhantomCommunicator(Communicator):
 
         :param position:    Ball coordinates as a 1D Numpy vector of size 3
         """
-        self.send_packet(
-            PhantomCommunicator.PacketTypes.BALL_POSITION, data=position
-        )
+        self.send_packet(PhantomCommunicator.PacketTypes.BALL_POSITION, data=position)
 
     def send_trajectory(self, trajectory):
         """
         Send the new trajectory to the controller
 
         :param trajectory:  List of coordinates as tuples of length 3
+
+        :return             Was the sending/confirmation successful
         """
-        self._send_trajectory_start()
+        for retry in range(PhantomCommunicator.COMMUNICATION_RETRIES):
+            # Signal trajectory transmission start
+            if not self._send_trajectory_start(len(trajectory)):
+                continue
 
-        for sample in trajectory:
-            self._send_trajectory_sample(sample)
+            # Send all samples
+            for sample in trajectory:
+                self._send_trajectory_sample(sample)
 
-        self._send_trajectory_end()
+            # Signal trajectory transmission stop
+            if self._send_trajectory_end():
+                return True
 
-    def _send_trajectory_start(self):
+        return False
+
+    def _send_trajectory_start(self, length):
         """
         Notify the trajectory transmission start
 
+        :param length:  Number of samples in the trajectory
+
         :return     Was the sending/confirmation successful
         """
+        packet = np.zeros(PhantomCommunicator.PACKET_SIZE - 1)
+        packet[0] = length
         return self.send_packet(
-            PhantomCommunicator.PacketTypes.TRAJECTORY_START, confirm=True
+            PhantomCommunicator.PacketTypes.TRAJECTORY_START, data=packet, confirm=True
         )
 
     def _send_trajectory_end(self):
@@ -300,9 +313,7 @@ class PhantomCommunicator(Communicator):
 
         :param sample:  Sample as tuple of length 3
         """
-        self.send_packet(
-            PhantomCommunicator.PacketTypes.TRAJECTORY_SAMPLE, data=sample
-        )
+        self.send_packet(PhantomCommunicator.PacketTypes.TRAJECTORY_SAMPLE, data=sample)
 
 
 if __name__ == "__main__":
