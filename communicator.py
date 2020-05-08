@@ -160,6 +160,7 @@ class PhantomCommunicator(Communicator):
         # Create receiver socket and bind address
         self._sock_receive = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._sock_receive.bind((self._ip, self._port_receive))
+        self._sock_receive.settimeout(PhantomCommunicator.COMMUNICATION_TIMEOUT)
 
         # Start the sender and receiver threads
         super().connect()
@@ -205,6 +206,8 @@ class PhantomCommunicator(Communicator):
             return struct.unpack(">%sd" % PhantomCommunicator.PACKET_SIZE, packet)
         except struct.error:
             print("Invalid data format received!")
+        except socket.timeout:
+            pass
         except ConnectionResetError:
             self.disconnect()
 
