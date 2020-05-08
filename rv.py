@@ -147,12 +147,8 @@ class App:
                     continue
 
                 elif self._state == App.States.STATE_QUIT:
+                    self._state_quit()
                     break
-
-            # Notify controller about the dropped connection
-            self.comm.send_stop()
-            self.comm.disconnect()
-            cv2.destroyAllWindows()
 
     def _state_handshake(self):
         """
@@ -237,6 +233,12 @@ class App:
         # Quit
         elif key == ord(App.KEY_QUIT):
             self._state = App.States.STATE_QUIT
+
+    def _state_quit(self):
+        # Notify controller about the dropped connection
+        self.comm.send_stop()
+        self.comm.disconnect()
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
