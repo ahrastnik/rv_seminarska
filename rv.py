@@ -70,15 +70,18 @@ class App:
         self.tracker = BallTracker(App.PIXEL_RATIO, App.X_OFFSET, App.Y_OFFSET)
 
     @staticmethod
-    def _draw_instruction(image, text, position=(50, 50), size=0.75, color=COLOR_TEXT):
+    def _draw_instruction(image, text, position=(50, 50), scale=0.75, color=COLOR_TEXT):
         """
-        Draws an instruction on the screen
+        Draws a text instruction on the screen
 
         :param image:   Image on which to draw the text
         :param text:    Text to draw
+        :param position:    The position of the text - anchor is on the left bottom
+        :param scale:        Scale of the text
+        :param color:       Color of the text
         """
         cv2.putText(
-            image, text, position, cv2.FONT_HERSHEY_SIMPLEX, size, color,
+            image, text, position, cv2.FONT_HERSHEY_SIMPLEX, scale, color,
         )
 
     def _mouse_callback_select(self, event, x, y, flags, param):
@@ -187,13 +190,13 @@ class App:
         The state waits for a handshake. If the handshake packet isn't received
         or it's content isn't valid, the application will quit.
         """
-        screen = np.zeros([500, 500])
+        screen = np.zeros([100, 500])
         # Draw instruction
         App._draw_instruction(screen, "Connecting to the controller...")
         # Draw image
         cv2.namedWindow(self._name)
         cv2.imshow(self._name, screen)
-        cv2.waitKey(1)
+        cv2.waitKey(1000)
 
         # Attempt to notify the controller about the established connection
         if self.comm.send_start():
@@ -204,10 +207,10 @@ class App:
         else:
             self._state = App.States.STATE_QUIT
 
-            screen = np.zeros([500, 500])
+            screen = np.zeros([100, 400])
             App._draw_instruction(screen, "Failed to connect...")
             cv2.imshow(self._name, screen)
-            cv2.waitKey(1)
+            cv2.waitKey(1000)
 
     def _state_capture_area(self, capture):
         """
@@ -306,6 +309,11 @@ class App:
 
     def _state_quit(self):
         """ Cleanup and close the program """
+        screen = np.zeros([100, 300])
+        App._draw_instruction(screen, "Exiting...")
+        cv2.imshow(self._name, screen)
+        cv2.waitKey(1000)
+
         # Notify controller about the dropped connection
         self.comm.send_stop()
         self.comm.disconnect()
