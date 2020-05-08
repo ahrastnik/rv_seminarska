@@ -28,7 +28,9 @@ class App:
     KEY_CAPTURE_AREA = "r"
 
     # Colors
-    COLOR_DRAW = (0, 0, 255)
+    COLOR_DRAW = (255, 102, 102)
+    COLOR_PASS = (150, 240, 150)
+    COLOR_FAIL = (70, 70, 255)
     COLOR_MARK = (0, 255, 0)
 
     class States(Enum):
@@ -36,6 +38,11 @@ class App:
         STATE_HANDSHAKE = -1
         STATE_CAPTURE_AREA = 0
         STATE_TRACKING = 1
+
+    class TrajectoryStates(Enum):
+        STATE_DRAWING = 0
+        STATE_TRANSMISSION_PASS = 1
+        STATE_TRANSMISSION_FAIL = 2
 
     def __init__(self, name, server_ip, port_send, port_receive):
         self._name = name
@@ -53,6 +60,7 @@ class App:
 
         # State - tracking
         self._trajectory = []
+        self._trajectory_state = App.TrajectoryStates.STATE_DRAWING
         self._drawing = False
 
         self.comm = PhantomCommunicator(
@@ -116,6 +124,7 @@ class App:
 
         elif event == cv2.EVENT_LBUTTONDOWN:
             self._trajectory.clear()
+            self._trajectory_state = App.TrajectoryStates.STATE_DRAWING
             self._drawing = True
             return
 
@@ -125,7 +134,10 @@ class App:
                 self._trajectory.append(self._trajectory[0])
 
             # Send the trajectory
-            self.comm.send_trajectory(self._trajectory)
+            if self.comm.send_trajectory(self._trajectory):
+                self._trajectory_state = App.TrajectoryStates.STATE_TRANSMISSION_PASS
+            else:
+                self._trajectory_state = App.TrajectoryStates.STATE_TRANSMISSION_FAIL
 
             self._drawing = False
             return
@@ -217,7 +229,15 @@ class App:
         for i, coord in enumerate(self._trajectory[1:]):
             p1 = self._trajectory[i][:2]
             p2 = coord[:2]
-            cv2.line(screen, p1, p2, App.COLOR_DRAW, thickness=1)
+            # Select color
+            if self._trajectory_state == App.TrajectoryStates.STATE_TRANSMISSION_PASS:
+                color = App.COLOR_PASS
+            elif self._trajectory_state == App.TrajectoryStates.STATE_TRANSMISSION_FAIL:
+                color = App.COLOR_FAIL
+            else:
+                color = App.COLOR_DRAW
+            # Draw trajectory
+            cv2.line(screen, p1, p2, color, thickness=1)
 
         # Draw image
         cv2.imshow(self._name, screen)
