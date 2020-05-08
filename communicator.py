@@ -268,6 +268,9 @@ class PhantomCommunicator(Communicator):
 
         :return             Was the sending/confirmation successful
         """
+        if len(trajectory) < 3:
+            return False
+
         for retry in range(PhantomCommunicator.COMMUNICATION_RETRIES):
             # Signal trajectory transmission start
             if not self._send_trajectory_start(len(trajectory)):

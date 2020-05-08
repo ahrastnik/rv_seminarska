@@ -143,7 +143,7 @@ class App:
 
         elif event == cv2.EVENT_LBUTTONUP:
             # Connect the last point with the first one
-            if len(self._trajectory) > 0:
+            if len(self._trajectory) > 1:
                 self._trajectory.append(self._trajectory[0])
 
             # Send the trajectory
