@@ -264,19 +264,19 @@ class App:
                 x, y, r = i
                 cv2.circle(screen, (x, y), r, App.COLOR_MARK, thickness=1)
 
-        # Draw trajectory
-        for i, coord in enumerate(self._trajectory[1:]):
-            p1 = self._trajectory[i][:2]
-            p2 = coord[:2]
-            # Select color
+        if len(self._trajectory) > 1:
+            # Select trajectory color
             if self._trajectory_state == App.TrajectoryStates.STATE_TRANSMISSION_PASS:
                 color = App.COLOR_PASS
             elif self._trajectory_state == App.TrajectoryStates.STATE_TRANSMISSION_FAIL:
                 color = App.COLOR_FAIL
             else:
                 color = App.COLOR_DRAW
+
             # Draw trajectory
-            cv2.line(screen, p1, p2, color, thickness=1)
+            trajectory = [i[:2] for i in self._trajectory]
+            pts = np.asarray(trajectory, np.int32)
+            cv2.polylines(screen, [pts], False, color, thickness=1)
 
         # Draw instruction
         App._draw_instruction(
