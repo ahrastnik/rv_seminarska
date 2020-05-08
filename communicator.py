@@ -163,13 +163,7 @@ class PhantomCommunicator(Communicator):
         # Start the sender and receiver threads
         super().connect()
 
-        # Notify controller about the established connection
-        self._send_start()
-
     def disconnect(self):
-        # Notify controller about the dropped connection
-        self._send_stop()
-
         super().disconnect()
 
         # Close sockets
@@ -215,7 +209,7 @@ class PhantomCommunicator(Communicator):
 
         return None
 
-    def send_packet(self, packet_type, data=None):
+    def send_packet(self, packet_type, data=None, confirm=False):
         """
         Sends a single 4 byte packet to the Phantom controller
 
@@ -223,6 +217,9 @@ class PhantomCommunicator(Communicator):
         :param data:        1D Numpy array of size 3
                             Data to send in the packet, if the data is None zeros will be sent,
                             after the packet type
+        :param confirm:     Does the packet expect a confirmation response?
+
+        :return             Was the sending/confirmation successful
         """
         packet = np.zeros(PhantomCommunicator.PACKET_SIZE, dtype=np.double)
         # Assign packet type
@@ -232,12 +229,25 @@ class PhantomCommunicator(Communicator):
             packet[1:] = data
         # Send the packet to the controller
         self.send(packet)
+        # Wait for confirmation
+        if confirm:
+            confirmation = self.receive(
+                block=True, timeout=PhantomCommunicator.COMMUNICATION_TIMEOUT
+            )
+            if confirmation is None or confirmation[0] != packet_type.value:
+                return False
 
-    def _send_start(self):
-        """ Notify the controller about the connection """
-        self.send_packet(PhantomCommunicator.PacketTypes.START)
+        return True
 
-    def _send_stop(self):
+    def send_start(self):
+        """
+        Notify the controller about the connection
+
+        :return     Was the sending/confirmation successful
+        """
+        return self.send_packet(PhantomCommunicator.PacketTypes.START, confirm=True)
+
+    def send_stop(self):
         """ Notify the controller about the disconnect """
         self.send_packet(PhantomCommunicator.PacketTypes.STOP)
 
@@ -247,7 +257,9 @@ class PhantomCommunicator(Communicator):
 
         :param position:    Ball coordinates as a 1D Numpy vector of size 3
         """
-        self.send_packet(PhantomCommunicator.PacketTypes.BALL_POSITION, position)
+        self.send_packet(
+            PhantomCommunicator.PacketTypes.BALL_POSITION, data=position
+        )
 
     def send_trajectory(self, trajectory):
         """
@@ -263,12 +275,24 @@ class PhantomCommunicator(Communicator):
         self._send_trajectory_end()
 
     def _send_trajectory_start(self):
-        """ Notify the trajectory transmission start """
-        self.send_packet(PhantomCommunicator.PacketTypes.TRAJECTORY_START)
+        """
+        Notify the trajectory transmission start
+
+        :return     Was the sending/confirmation successful
+        """
+        return self.send_packet(
+            PhantomCommunicator.PacketTypes.TRAJECTORY_START, confirm=True
+        )
 
     def _send_trajectory_end(self):
-        """ Notify the trajectory transmission stop """
-        self.send_packet(PhantomCommunicator.PacketTypes.TRAJECTORY_END)
+        """
+        Notify the trajectory transmission stop
+
+        :return     Was the sending/confirmation successful
+        """
+        return self.send_packet(
+            PhantomCommunicator.PacketTypes.TRAJECTORY_END, confirm=True
+        )
 
     def _send_trajectory_sample(self, sample):
         """
@@ -276,7 +300,9 @@ class PhantomCommunicator(Communicator):
 
         :param sample:  Sample as tuple of length 3
         """
-        self.send_packet(PhantomCommunicator.PacketTypes.TRAJECTORY_SAMPLE, sample)
+        self.send_packet(
+            PhantomCommunicator.PacketTypes.TRAJECTORY_SAMPLE, data=sample
+        )
 
 
 if __name__ == "__main__":

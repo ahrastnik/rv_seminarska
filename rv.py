@@ -149,6 +149,8 @@ class App:
                 elif self._state == App.States.STATE_QUIT:
                     break
 
+            # Notify controller about the dropped connection
+            self.comm.send_stop()
             self.comm.disconnect()
             cv2.destroyAllWindows()
 
@@ -159,16 +161,11 @@ class App:
         The state waits for a handshake. If the handshake packet isn't received
         or it's content isn't valid, the application will quit.
         """
-        handshake = self.comm.receive(
-            block=True, timeout=PhantomCommunicator.COMMUNICATION_TIMEOUT
-        )
-        if (
-            handshake is None
-            or handshake[0] != PhantomCommunicator.PacketTypes.START.value
-        ):
-            self._state = App.States.STATE_QUIT
-        else:
+        # Notify controller about the established connection
+        if self.comm.send_start():
             self._state = App.States.STATE_CAPTURE_AREA
+        else:
+            self._state = App.States.STATE_QUIT
 
     def _state_capture_area(self, capture):
         """
