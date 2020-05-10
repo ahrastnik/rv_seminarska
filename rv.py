@@ -150,8 +150,9 @@ class App:
             if len(self._trajectory) > 1:
                 self._trajectory.append(self._trajectory[0])
 
+            trajectory = self.tracker.process_trajectory(self._trajectory)
             # Send the trajectory
-            if self.comm.send_trajectory(self._trajectory):
+            if self.comm.send_trajectory(trajectory):
                 self._trajectory_state = App.TrajectoryStates.STATE_TRANSMISSION_PASS
             else:
                 self._trajectory_state = App.TrajectoryStates.STATE_TRANSMISSION_FAIL
@@ -290,11 +291,11 @@ class App:
 
         if coordinates is not None:
             # Send ball coordinates to the robot controller
-            for c in coordinates[0, :, 3:]:
+            for c in coordinates[:, 3:]:
                 self.comm.send_ball_position(c)
 
             # Mark detected ball
-            for i in coordinates[0, :, :3]:
+            for i in coordinates[:, :3]:
                 # Convert pixel coordinates as floats to integers
                 i = np.uint16(np.around(i))
                 x, y, r = i

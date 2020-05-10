@@ -267,11 +267,11 @@ class PhantomCommunicator(Communicator):
         """
         Send the new trajectory to the controller
 
-        :param trajectory:  List of coordinates as tuples of length 3
+        :param trajectory:  2D Numpy array of size Nx3
 
         :return             Was the sending/confirmation successful
         """
-        if len(trajectory) < 3:
+        if trajectory.shape[0] < 3:
             return False
 
         for retry in range(PhantomCommunicator.COMMUNICATION_RETRIES):

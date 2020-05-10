@@ -50,15 +50,25 @@ class ObjectTracker:
 
         :return:                Coordinates in millimeters as Numpy array
         """
-
         mm_coordinates = pixel_coordinates.copy()  # * self._pixel_ratio
-        mm_coordinates[:, :, 0] -= self._x_offset
-        mm_coordinates[:, :, 1] -= self._y_offset
-        mm_coordinates[:, :, 2] = 0
-        mm_coordinates[:, :, 0] *= self._pixel_ratio
-        mm_coordinates[:, :, 1] *= -self._pixel_ratio
+        mm_coordinates[:, 0] -= self._x_offset
+        mm_coordinates[:, 1] -= self._y_offset
+        mm_coordinates[:, 2] = 0
+        mm_coordinates[:, 0] *= self._pixel_ratio
+        mm_coordinates[:, 1] *= -self._pixel_ratio
 
         return mm_coordinates
+
+    def process_trajectory(self, trajectory):
+        """
+        Converts trajectory pixel coordinates to millimeters
+
+        :param trajectory:  List of coordinates as tuples of size 3
+
+        :return:            2D numpy array of size Nx3
+        """
+        trajectory_mm = np.asarray(trajectory, dtype=np.double)
+        return self._pixels_to_mm(trajectory_mm)
 
 
 class BallTracker(ObjectTracker):
@@ -84,15 +94,15 @@ class BallTracker(ObjectTracker):
         # Validate coordinates
         if pixel_coordinates is None:
             return None
-        # pixel_coordinates = np.uint16(np.around(pixel_coordinates))
+        pixel_coordinates = pixel_coordinates.reshape(pixel_coordinates.shape[1:])
         # Store all coordinates in a single array
         mm_coordinates = self._pixels_to_mm(pixel_coordinates)
 
         coordinates = np.empty(
-            (*(pixel_coordinates.shape[:2]), pixel_coordinates.shape[2] * 2)
+            (pixel_coordinates.shape[0], pixel_coordinates.shape[1] * 2)
         )
-        coordinates[:, :, :3] = pixel_coordinates
-        coordinates[:, :, 3:] = mm_coordinates
+        coordinates[:, :3] = pixel_coordinates
+        coordinates[:, 3:] = mm_coordinates
 
         return coordinates
 
