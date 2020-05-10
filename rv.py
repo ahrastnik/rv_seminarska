@@ -15,9 +15,6 @@ PORT_RECEIVE = 9696
 
 
 class App:
-    PIXEL_RATIO = 0.694
-    X_OFFSET = 296
-    Y_OFFSET = 278
 
     # Capture size limit
     CAPTURE_SIZE_LIMIT_X = 200
@@ -29,7 +26,7 @@ class App:
 
     # Colors
     COLOR_DRAW = (255, 102, 102)
-    COLOR_PASS = (150, 240, 150)
+    COLOR_PASS = (34, 139, 34)
     COLOR_FAIL = (70, 70, 255)
     COLOR_MARK = (0, 255, 0)
     COLOR_TEXT = (255, 255, 255)
@@ -38,7 +35,8 @@ class App:
         STATE_QUIT = -2
         STATE_HANDSHAKE = -1
         STATE_CAPTURE_AREA = 0
-        STATE_TRACKING = 1
+        STATE_CALIBRATE = 1
+        STATE_TRACKING = 2
 
     class TrajectoryStates(Enum):
         STATE_DRAWING = 0
@@ -59,6 +57,9 @@ class App:
         self._capture_coord = {"top": 400, "left": 400, "width": 400, "height": 400}
         self._screen_capture = None
 
+        # State - calibration
+        self._calibration_retries = 0
+
         # State - tracking
         self._trajectory = []
         self._trajectory_state = App.TrajectoryStates.STATE_DRAWING
@@ -67,7 +68,7 @@ class App:
         self.comm = PhantomCommunicator(
             ip=server_ip, port_send=port_send, port_receive=port_receive
         )
-        self.tracker = BallTracker(App.PIXEL_RATIO, App.X_OFFSET, App.Y_OFFSET)
+        self.tracker = BallTracker()
 
     @staticmethod
     def _draw_instruction(image, text, position=(50, 50), scale=0.75, color=COLOR_TEXT):
@@ -125,7 +126,8 @@ class App:
             # Clear screen shot
             self._screen_capture = None
             # Set mode to tracking
-            self._state = App.States.STATE_TRACKING
+            self._state = App.States.STATE_CALIBRATE
+            cv2.destroyWindow(self._name)
             return
 
     def _mouse_callback(self, event, x, y, flags, param):
@@ -175,6 +177,10 @@ class App:
                     self._state_capture_area(capture)
                     continue
 
+                elif self._state == App.States.STATE_CALIBRATE:
+                    self._state_calibrate(capture)
+                    continue
+
                 elif self._state == App.States.STATE_TRACKING:
                     self._state_tracking(capture)
                     continue
@@ -222,7 +228,10 @@ class App:
             # Grab the screen shot, when first time entering the state
             self._screen_capture = np.asarray(capture.grab(capture.monitors[1]))
             # OpenCV window initialization
-            cv2.namedWindow(self._name)
+            cv2.namedWindow(self._name, cv2.WND_PROP_FULLSCREEN)
+            cv2.setWindowProperty(
+                self._name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN
+            )
             cv2.setMouseCallback(self._name, self._mouse_callback)
 
         # Copy the screen shot, to prevent over-drawing
@@ -240,6 +249,38 @@ class App:
         if cv2.waitKey(1) & 0xFF == ord(App.KEY_QUIT):
             self._state = App.States.STATE_QUIT
 
+    def _state_calibrate(self, capture):
+        screen = np.asarray(capture.grab(self._capture_coord))
+
+        coordinates = self.tracker.calibrate(screen)
+        if coordinates is not None:
+            for i in coordinates:
+                # Convert pixel coordinates as floats to integers
+                i = np.uint16(np.around(i))
+                x, y, r = i
+                cv2.circle(screen, (x, y), r, App.COLOR_MARK, thickness=1)
+            self._state = App.States.STATE_TRACKING
+            self._calibration_retries = 0
+            return
+        else:
+            if self._calibration_retries >= BallTracker.CALIBRATION_RETRIES:
+                screen = np.zeros((100, 300))
+                App._draw_instruction(
+                    screen, "Calibration failed:(",
+                )
+                cv2.imshow(self._name, screen)
+                cv2.waitKey(3000)
+                self._calibration_retries = 0
+                self._state = App.States.STATE_QUIT
+                return
+            else:
+                self._calibration_retries += 1
+
+        # Show image
+        # cv2.imshow(self._name, screen)
+        # cv main loop
+        # cv2.waitKey(1)
+
     def _state_tracking(self, capture):
         """
         Track the ball and send the coordinates
@@ -248,10 +289,11 @@ class App:
         """
         # Capture the selected area
         screen = np.asarray(capture.grab(self._capture_coord))
-        image = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+        image = cv2.cvtColor(screen, cv2.COLOR_BGRA2GRAY)
 
         # Locate the ball
         coordinates = self.tracker.find(image)
+
         if coordinates is not None:
             # Send ball coordinates to the robot controller
             for c in coordinates[0, :, 3:]:
@@ -293,8 +335,11 @@ class App:
         )
 
         # Draw image
+        cv2.resizeWindow(
+            self._name, self._capture_coord["width"], self._capture_coord["height"]
+        )
+        cv2.setWindowProperty(self._name, cv2.WND_PROP_AUTOSIZE, cv2.WINDOW_NORMAL)
         cv2.imshow(self._name, screen)
-
         # OpenCV mainloop
         key = cv2.waitKey(1) & 0xFF
 
