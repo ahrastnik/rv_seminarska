@@ -127,7 +127,6 @@ class App:
             self._screen_capture = None
             # Set mode to tracking
             self._state = App.States.STATE_CALIBRATE
-            cv2.destroyWindow(self._name)
             return
 
     def _mouse_callback(self, event, x, y, flags, param):
@@ -275,11 +274,6 @@ class App:
                 return
             else:
                 self._calibration_retries += 1
-
-        # Show image
-        # cv2.imshow(self._name, screen)
-        # cv main loop
-        # cv2.waitKey(1)
 
     def _state_tracking(self, capture):
         """
