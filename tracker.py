@@ -74,6 +74,8 @@ class ObjectTracker:
 class BallTracker(ObjectTracker):
     def __init__(self):
         super().__init__()
+        self.previous_coord = np.array((0, 0, 0))
+        self.treshold = np.array((0.001, 0.001, 0))
 
     def find(self, image):
         if not self._calibrated:
@@ -97,12 +99,15 @@ class BallTracker(ObjectTracker):
         pixel_coordinates = pixel_coordinates.reshape(pixel_coordinates.shape[1:])
         # Store all coordinates in a single array
         mm_coordinates = self._pixels_to_mm(pixel_coordinates)
-
         coordinates = np.empty(
             (pixel_coordinates.shape[0], pixel_coordinates.shape[1] * 2)
         )
+        if np.all(abs(mm_coordinates - self.previous_coord) >= self.treshold):
+            coordinates[:, 3:] = mm_coordinates
+            self.previous_coord = mm_coordinates
+        else:
+            coordinates[:, 3:] = self.previous_coord
         coordinates[:, :3] = pixel_coordinates
-        coordinates[:, 3:] = mm_coordinates
 
         return coordinates
 
